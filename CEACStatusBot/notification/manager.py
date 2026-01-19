@@ -31,17 +31,43 @@ class NotificationManager:
 
     def _get_hour_range(self) -> list:
         active_hours = os.getenv("ACTIVE_HOURS")
-        if active_hours is None:
+        if active_hours is None or active_hours.strip() == "":
             active_hours = DEFAULT_ACTIVE_HOURS
-        start_str, end_str = active_hours.split("-")
-        start = datetime.datetime.strptime(start_str, "%H:%M").time()
-        end = datetime.datetime.strptime(end_str, "%H:%M").time()
+        parts = active_hours.split("-")
+        if len(parts) != 2:
+            print(f"Invalid ACTIVE_HOURS format '{active_hours}', expected 'HH:MM-HH:MM'. Using default: {DEFAULT_ACTIVE_HOURS}")
+            active_hours = DEFAULT_ACTIVE_HOURS
+            parts = active_hours.split("-")
+        start_str, end_str = parts
+        start = datetime.datetime.strptime(start_str.strip(), "%H:%M").time()
+        end = datetime.datetime.strptime(end_str.strip(), "%H:%M").time()
         if start > end:
             raise ValueError("Start time must be before end time, got start: {start}, end: {end}")
         return start, end
 
     def addHandle(self, notificationHandle: NotificationHandle) -> None:
         self.__handleList.append(notificationHandle)
+
+    def test(self) -> None:
+        """Send a test notification to verify all channels are working."""
+        if not self.__handleList:
+            print("No notification channels configured.")
+            return
+
+        test_result = {
+            "success": True,
+            "time": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            "visa_type": "TEST",
+            "status": "Test Notification",
+            "case_created": "N/A",
+            "case_last_updated": "N/A",
+            "description": "This is a test notification to verify your notification channels are working correctly.",
+            "application_num": self.__number,
+            "application_num_origin": self.__number,
+        }
+
+        for handle in self.__handleList:
+            handle.send(test_result)
 
     def send(self) -> None:
         res = query_status(
@@ -51,6 +77,10 @@ class NotificationManager:
             self.__surname,
             self.__captchaHandle,
         )
+        if not res.get("success"):
+            error_msg = res.get("error", "Unknown error")
+            print(f"Failed to query CEAC status: {error_msg}")
+            return
         current_status = res["status"]
         current_last_updated = res["case_last_updated"]
         print(f"Current status: {current_status} - Last updated: {current_last_updated}")

@@ -7,6 +7,7 @@ from CEACStatusBot.captcha import CaptchaHandle, OnnxCaptchaHandle
 def query_status(location, application_num, passport_number, surname, captchaHandle: CaptchaHandle = OnnxCaptchaHandle("captcha.onnx")):
     isSuccess = False
     failCount = 0
+    last_error = None
 
     while not isSuccess and failCount < 5:
         failCount += 1
@@ -27,6 +28,7 @@ def query_status(location, application_num, passport_number, surname, captchaHan
             r = session.get(url=f"{ROOT}/ceacstattracker/status.aspx?App=NIV", headers=headers)
         except Exception as e:
             print(e)
+            last_error = f"Network error on initial request: {e}"
             isSuccess = False
             continue
 
@@ -51,7 +53,7 @@ def query_status(location, application_num, passport_number, surname, captchaHan
 
         if not location_value:
             print("Location not found in dropdown options.")
-            return {"success": False}
+            return {"success": False, "error": f"Location '{location}' not found in dropdown options"}
 
         # Fill form
         def update_from_current_page(cur_page, name, data):
@@ -91,12 +93,14 @@ def query_status(location, application_num, passport_number, surname, captchaHan
             r = session.post(url=f"{ROOT}/ceacstattracker/status.aspx", headers=headers, data=data)
         except Exception as e:
             print(e)
+            last_error = f"Network error on form submission: {e}"
             isSuccess = False
             continue
 
         soup = BeautifulSoup(r.text, features="lxml")
         status_tag = soup.find("span", id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblStatus")
         if not status_tag:
+            last_error = "Captcha verification failed or invalid application info"
             isSuccess = False
             continue
 
@@ -124,5 +128,6 @@ def query_status(location, application_num, passport_number, surname, captchaHan
     if not isSuccess:
         result = {
             "success": False,
+            "error": last_error or "Unknown error after 5 retries",
         }
     return result
